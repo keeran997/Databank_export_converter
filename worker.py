@@ -9,7 +9,13 @@ class ConvertThread(QThread):
     error = Signal(str)
     cancelled = Signal()
 
-    def __init__(self, input_path, mapping_path, template_path, output_path):
+    def __init__(
+        self,
+        input_path,
+        mapping_path,
+        template_path,
+        output_path,
+    ):
         super().__init__()
 
         self.input_path = input_path
@@ -24,7 +30,7 @@ class ConvertThread(QThread):
 
     def run(self):
         try:
-            completed = convert(
+            convert(
                 input_path=self.input_path,
                 mapping_path=self.mapping_path,
                 template_path=self.template_path,
@@ -33,12 +39,14 @@ class ConvertThread(QThread):
                 cancel_flag=self._cancel_event.is_set,
             )
 
-            if not completed or self._cancel_event.is_set():
+            if self._cancel_event.is_set():
                 self.cancelled.emit()
                 return
 
-            self.progress.emit(100)
             self.success.emit()
+
+        except InterruptedError:
+            self.cancelled.emit()
 
         except Exception as error:
             self.error.emit(str(error))

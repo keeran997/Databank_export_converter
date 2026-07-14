@@ -19,8 +19,8 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 #Config auto load
-mapping_path = resource_path("config/mapping.json")
-template_path = resource_path("config/template.xlsx")
+mapping_path = resource_path("config/mapping.xlsx")
+template_path = resource_path("config/Gait Lab Physical Exam Template 2026.xlsx")
 
 # GUI
 class ConverterUI(QWidget):
@@ -140,6 +140,7 @@ class ConverterUI(QWidget):
         up_msg = (
             f"A new version {latest_ver} of the converter is available.\n\n"
             f"Download and install now?"
+            f"\nWhat's new:\n{release_notes}"
         )
 
         ans = QMessageBox.question(
@@ -183,8 +184,12 @@ class ConverterUI(QWidget):
             self.update_progress.setValue
         )
 
+        self.update_download_thread.downloaded.connect(
+            self.install_update
+        )
+
         self.update_download_thread.error.connect(
-            self.on_update_download_error
+            self.update_download_error
         )
 
         self.update_download_thread.start()

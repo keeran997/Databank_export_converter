@@ -1,4 +1,3 @@
-from interface import ConverterUI
 import sys
 from PySide6.QtWidgets import QApplication, QSplashScreen
 from PySide6.QtGui import QPixmap

@@ -26,9 +26,9 @@ class HelpDialog(QDialog):
              4. Click the "EXCEL CSV Labels" icon with the arrow to download.
         
         How to use the converter:
-             1. Click "Load CSV File" to load your label-based REDCap .csv export file. Alternatively, you can drag and drop a file into the box.
+             1. Click "Load CSV File" to load your label-based REDCap .csv export file. Alternatively, drag and drop the .csv file into the converter window.
              2. Click "Save Output As" to choose where to save your converted file.
-             3. Click "Run Converter" to run the converter
+             3. Click "Run Conversion" to run the converter.
              4. Converter should run successfully.
              
         The converter is a work in progress.  

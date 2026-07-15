@@ -18,6 +18,9 @@ dist/
 # Inno Setup output
 installer/output/
 
+#test files
+test/
+
 # Temporary files
 *.tmp
 *.log

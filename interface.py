@@ -1,7 +1,7 @@
 import sys
 import os
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QFileDialog, QLabel,
-    QLineEdit, QMessageBox, QProgressBar, QHBoxLayout, QApplication, QProgressDialog)
+    QLineEdit, QMessageBox, QProgressBar, QHBoxLayout, QApplication, QProgressDialog, QCheckBox)
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QPixmap
 from worker import ConvertThread
@@ -71,6 +71,25 @@ class ConverterUI(QWidget):
         browse_csv.clicked.connect(self.pick_csv)
 
         layout.addWidget(browse_csv)
+
+        self.merge_checkbox = QCheckBox("Merge into an existing Physical Exam file")
+        self.merge_checkbox.toggled.connect(self.toggle_merge_controls)
+
+        layout.addSpacing(10)
+        layout.addWidget(self.merge_checkbox)
+
+        self.merge_path = QLineEdit()
+        self.merge_path.setPlaceholderText("Select an existing Physical Exam .xlsx file")
+
+        self.merge_path.hide()
+
+        layout.addWidget(self.merge_path)
+
+        self.browse_merge_btn = QPushButton("Load existing Physical Exam file")
+        self.browse_merge_btn.clicked.connect(self.pick_merge_file)
+        self.browse_merge_btn.hide()
+
+        layout.addWidget(self.browse_merge_btn)
 
         # Write output file
         self.output_path = QLineEdit()
@@ -245,6 +264,22 @@ class ConverterUI(QWidget):
         if output_file:
             self.output_path.setText(output_file)
 
+    def toggle_merge_controls(self, checked):
+        self.merge_path.setVisible(checked)
+        self.browse_merge_btn.setVisible(checked)
+
+        if not checked:
+            self.merge_path.clear()
+
+    def pick_merge_file(self):
+        merge_file, _ = QFileDialog.getOpenFileName(self,
+                                                    "Load existing Physical Exam file",
+                                                    "",
+                                                    "Excel Files (*.xlsx)")
+        if merge_file:
+            self.merge_path.setText(merge_file)
+            self.output_path.clear()
+
     #Drag & drop capability
     def dragEnterEvent(self, event):
         if not event.mimeData().hasUrls():
@@ -282,6 +317,30 @@ class ConverterUI(QWidget):
         input_path = self.input_path.text().strip()
         output_path = self.output_path.text().strip()
 
+        merge_path = None
+
+        if self.merge_checkbox.isChecked():
+            merge_path = self.merge_path.text().strip()
+
+        if self.merge_checkbox.isChecked():
+            if not merge_path:
+                QMessageBox.warning(self,
+                                    "Missing Merge file",
+                                    "Please select the Physical Exam file you want to merge into.")
+                return
+
+            if not os.path.isfile(merge_path):
+                QMessageBox.warning(self,
+                                    "Invalid Merge File",
+                                    "The selected Physical Exam file does not exist.")
+                return
+
+            if not merge_path.lower().endswith(".xlsx"):
+                QMessageBox.warning(self,
+                                    "Invalid Merge File",
+                                    "The Physical Exam file must be an Excel .xlsx file.")
+                return
+
         if not input_path:
             QMessageBox.warning(self, "Missing file", "Please select REDCap export .csv file")
             return
@@ -309,6 +368,17 @@ class ConverterUI(QWidget):
         if not output_path.lower().endswith(".xlsx"):
             output_path += ".xlsx"
             self.output_path.setText(output_path)
+
+        if merge_path:
+            merge_abs = os.path.normcase(os.path.abspath(merge_path))
+            output_abs = os.path.normcase(os.path.abspath(output_path))
+
+            if merge_abs == output_abs:
+                QMessageBox.warning(self,
+                                    "Invalid Output File",
+                                    "The output file must be different from the existing Physical Exam file.\n\n"
+                                    "Choose a new filename so the original file is kept unchanged.")
+                return
 
         output_folder = os.path.dirname(output_path)
 
@@ -350,6 +420,7 @@ class ConverterUI(QWidget):
             mapping_path=mapping_path,
             template_path=template_path,
             output_path=output_path,
+            merge_path=merge_path
         )
 
         self.thread.progress.connect(self.progress.setValue)
@@ -382,13 +453,24 @@ class ConverterUI(QWidget):
         QMessageBox.information(self, "Error", msg)
         self.progress.hide()
 
-    def on_finished(self):
+    def on_finished(self, result):
         self.is_running = False
         self.run_btn.setText("Run conversion")
         self.run_btn.setEnabled(True)
         self.progress.setValue(100)
         self.progress.setFormat("%p%")
-        QMessageBox.information(self, "Success!", "Conversion finished!")
+
+        ass_status = result["assessment_status"].title()
+        written = result["written_count"]
+        skip_exist = result["skipped_existing_count"]
+        skip_blank = result["skipped_blank_count"]
+
+        if result["merge_mode"]:
+            msg = (f"{ass_status} data was merged successfully!")
+        else:
+            msg = f"Conversion finished!"
+
+        QMessageBox.information(self, "Success!", msg)
         self.progress.hide()
 
     def on_cancelled(self):

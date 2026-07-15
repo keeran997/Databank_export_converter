@@ -2,11 +2,9 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import CellCoordinatesException
 
-
 PREOP_TARGET_COLUMN = "PreOp Target (Previous)"
 POSTOP_TARGET_COLUMN = "PostOp Target (Current)"
 STATUS_COLUMN = "PreOp or PostOp"
-
 
 def load_mapping(mapping_path):
     """Load and validate the Excel mapping file."""
@@ -57,7 +55,6 @@ def load_mapping(mapping_path):
 
     return mapping_df
 
-
 def get_assessment_status(input_row):
     """Read whether the REDCap export is PreOp or PostOp."""
 
@@ -94,7 +91,6 @@ def get_assessment_status(input_row):
         "Expected PreOp or PostOp."
     )
 
-
 def is_blank_mapping_value(value):
     """
     Return True when a mapping cell should be ignored.
@@ -111,7 +107,6 @@ def is_blank_mapping_value(value):
     text = str(value).strip()
 
     return text in {"", "-"}
-
 
 def get_usable_mapping_rows(mapping_df, target_column):
     """Return source-column and target-cell pairs for this assessment."""
@@ -136,7 +131,6 @@ def get_usable_mapping_rows(mapping_df, target_column):
         )
 
     return usable_rows
-
 
 def validate_columns(input_df, usable_mapping_rows):
     """Return mapped REDCap columns missing from the export."""
@@ -205,11 +199,26 @@ def validate_target_cells(worksheet, usable_mapping_rows):
             f"cell references:\n\n{formatted_targets}"
         )
 
+def cell_full(cell):
+    """
+    Returns True when Excel cell is not empty.
+    """
+    value = cell.value
+
+    if value is None:
+        return False
+
+    if isinstance(value, str) and value.strip() == "":
+        return False
+
+    return True
+
 def convert(
     input_path,
     mapping_path,
     template_path,
     output_path,
+    merge_path=None,
     progress_callback=None,
     cancel_flag=None,
 ):
@@ -312,19 +321,29 @@ def convert(
     # 4. Open the physical-exam template
     # --------------------------------------------------
 
+    workbook_source = merge_path or template_path
+
     try:
-        workbook = load_workbook(template_path)
+        workbook = load_workbook(workbook_source)
 
     except FileNotFoundError as error:
+        if merge_path:
+            file_description = "existing Physical Exam file"
+        else:
+            file_description = "Physical Exam template"
+
         raise FileNotFoundError(
-            "The Physical Exam template file could not be "
-            f"found:\n{template_path}"
+            f"The {file_description} could not be found:\n{workbook_source}"
         ) from error
 
     except Exception as error:
+        if merge_path:
+            file_description = "existing Physical Exam file"
+        else:
+            file_description = "Physical Exam template"
+
         raise ValueError(
-            "The Physical Exam template file could not be "
-            f"opened:\n{error}"
+            f"The {file_description} could not be opened:\n{error}"
         ) from error
 
     worksheet = workbook.active
@@ -334,12 +353,14 @@ def convert(
         usable_mapping_rows,
     )
 
+    total_fields = len(usable_mapping_rows)
+    written = 0
+    skip_exist = 0
+    skip_blank = 0
+
     # --------------------------------------------------
     # 5. Populate the template
     # --------------------------------------------------
-
-    total_fields = len(usable_mapping_rows)
-
     for index, (
         source_column,
         target_cell,
@@ -351,13 +372,22 @@ def convert(
             )
 
         value = input_row[source_column]
+        target = worksheet[target_cell]
 
-        if not pd.isna(value):
-            if not (
+        # Skip blank REDCap values.
+        if pd.isna(value) or (
                 isinstance(value, str)
                 and value.strip() == ""
-            ):
-                worksheet[target_cell] = value
+        ):
+            skip_blank += 1
+
+        # Protect any existing value in the workbook.
+        elif cell_full(target):
+            skip_exist += 1
+
+        else:
+            target.value = value
+            written += 1
 
         if progress_callback:
             completed_fraction = index / total_fields
@@ -397,4 +427,8 @@ def convert(
     return {
         "output_path": output_path,
         "assessment_status": assessment_status,
+        "merge_mode": merge_path is not None,
+        "written_count": written,
+        "skipped_existing_count": skip_exist,
+        "skipped_blank_count": skip_blank,
     }

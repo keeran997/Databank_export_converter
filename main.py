@@ -1,12 +1,20 @@
 import sys
 from PySide6.QtWidgets import QApplication, QSplashScreen
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QIcon
 from PySide6.QtCore import Qt
 from interface import ConverterUI, resource_path
+import ctypes
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        app_id = ("AUT.DatabankExportConverter."
+                  "DatabankExportConverter1.0")
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+
     app = QApplication(sys.argv)
 
+    app.setWindowIcon(QIcon(resource_path("images/logo.png")))
     splash_pixmap = QPixmap(resource_path("images/logo.png"))
     splash_pixmap = splash_pixmap.scaled(
         500,

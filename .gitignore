@@ -17,6 +17,7 @@ dist/
 
 # Inno Setup output
 installer/output/
+installer_output
 
 #test files
 test/

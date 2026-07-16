@@ -15,6 +15,7 @@ class ConvertThread(QThread):
         mapping_path,
         template_path,
         output_path,
+        patient_id,
         merge_path=None,
     ):
         super().__init__()
@@ -23,6 +24,7 @@ class ConvertThread(QThread):
         self.mapping_path = mapping_path
         self.template_path = template_path
         self.output_path = output_path
+        self.patient_id = patient_id
         self.merge_path = merge_path
 
         self._cancel_event = Event()
@@ -37,6 +39,7 @@ class ConvertThread(QThread):
                 mapping_path=self.mapping_path,
                 template_path=self.template_path,
                 output_path=self.output_path,
+                patient_id=self.patient_id,
                 merge_path=self.merge_path,
                 progress_callback=self.progress.emit,
                 cancel_flag=self._cancel_event.is_set,

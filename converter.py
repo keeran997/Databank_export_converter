@@ -5,6 +5,7 @@ from openpyxl.utils.exceptions import CellCoordinatesException
 PREOP_TARGET_COLUMN = "PreOp Target (Previous)"
 POSTOP_TARGET_COLUMN = "PostOp Target (Current)"
 STATUS_COLUMN = "PreOp or PostOp"
+PATIENT_ID_COLUMN = "PatientID"
 
 def load_mapping(mapping_path):
     """Load and validate the Excel mapping file."""
@@ -55,25 +56,134 @@ def load_mapping(mapping_path):
 
     return mapping_df
 
-def get_assessment_status(input_row):
-    """Read whether the REDCap export is PreOp or PostOp."""
+def get_patient_ids(input_path):
+    """Return the unique patient IDs contained in a REDCap export."""
 
-    if STATUS_COLUMN not in input_row.index:
+    try:
+        input_df = pd.read_csv(
+            input_path,
+            dtype=object,
+        )
+
+    except FileNotFoundError as error:
+        raise FileNotFoundError(
+            f"The input file could not be found:\n{input_path}"
+        ) from error
+
+    except Exception as error:
+        raise ValueError(
+            f"The REDCap export could not be opened:\n{error}"
+        ) from error
+
+    if input_df.empty:
+        raise ValueError(
+            "The selected REDCap export contains no records."
+        )
+
+    input_df.columns = [
+        str(column).strip()
+        for column in input_df.columns
+    ]
+
+    if PATIENT_ID_COLUMN not in input_df.columns:
+        raise ValueError(
+            "The selected export does not contain a "
+            f"'{PATIENT_ID_COLUMN}' column."
+        )
+
+    patient_ids = []
+
+    for value in input_df[PATIENT_ID_COLUMN]:
+        if pd.isna(value):
+            continue
+
+        patient_id = str(value).strip()
+
+        if not patient_id:
+            continue
+
+        if patient_id not in patient_ids:
+            patient_ids.append(patient_id)
+
+    if not patient_ids:
+        raise ValueError(
+            "No patient IDs were found in the selected export."
+        )
+
+    return patient_ids
+
+def get_patient_data(input_df, patient_id):
+    """
+    Combine all non-blank values from rows belonging to one patient.
+
+    Later non-blank values replace earlier non-blank values.
+    """
+
+    if PATIENT_ID_COLUMN not in input_df.columns:
+        raise ValueError(
+            "The selected export does not contain a "
+            f"'{PATIENT_ID_COLUMN}' column."
+        )
+
+    patient_id_text = str(patient_id).strip()
+
+    patient_rows = input_df[
+        input_df[PATIENT_ID_COLUMN]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        == patient_id_text
+    ]
+
+    if patient_rows.empty:
+        raise ValueError(
+            f"Patient ID {patient_id_text} was not found "
+            "in the selected export."
+        )
+
+    patient_data = {}
+
+    for column in patient_rows.columns:
+        non_blank_values = []
+
+        for value in patient_rows[column]:
+            if pd.isna(value):
+                continue
+
+            if isinstance(value, str) and value.strip() == "":
+                continue
+
+            non_blank_values.append(value)
+
+        if non_blank_values:
+            patient_data[column] = non_blank_values[-1]
+        else:
+            patient_data[column] = None
+
+    return patient_data
+
+def get_assessment_status(patient_data):
+    """Read whether the selected patient is PreOp or PostOp."""
+
+    if STATUS_COLUMN not in patient_data:
         raise ValueError(
             "The REDCap export does not contain the "
             f"'{STATUS_COLUMN}' column."
         )
 
-    status = input_row[STATUS_COLUMN]
+    status = patient_data.get(STATUS_COLUMN)
 
+    # Blank values default to PostOp.
     if pd.isna(status):
-        raise ValueError(
-            f"The '{STATUS_COLUMN}' field is blank."
-        )
+        return "postop"
+
+    status_text = str(status).strip()
+
+    if status_text == "":
+        return "postop"
 
     normalised_status = (
-        str(status)
-        .strip()
+        status_text
         .lower()
         .replace(" ", "")
         .replace("-", "")
@@ -131,6 +241,15 @@ def get_usable_mapping_rows(mapping_df, target_column):
         )
 
     return usable_rows
+
+def get_patient_id_target(usable_mapping_rows):
+    """Return Excel target cell mapped from PatientID"""
+
+    for source_column, target_cell in usable_mapping_rows:
+        if source_column == PATIENT_ID_COLUMN:
+            return target_cell
+
+    return None
 
 def validate_columns(input_df, usable_mapping_rows):
     """Return mapped REDCap columns missing from the export."""
@@ -218,6 +337,7 @@ def convert(
     mapping_path,
     template_path,
     output_path,
+    patient_id,
     merge_path=None,
     progress_callback=None,
     cancel_flag=None,
@@ -229,10 +349,7 @@ def convert(
     # --------------------------------------------------
 
     try:
-        input_df = pd.read_csv(
-            input_path,
-            dtype=object,
-        )
+        input_df = pd.read_csv(input_path, dtype=object)
 
     except FileNotFoundError as error:
         raise FileNotFoundError(
@@ -254,15 +371,7 @@ def convert(
         for column in input_df.columns
     ]
 
-    if len(input_df) > 1:
-        raise ValueError(
-            "The selected REDCap export contains more than one "
-            "record.\n\n"
-            "This version of the converter processes one patient "
-            "record at a time."
-        )
-
-    input_row = input_df.iloc[0]
+    pt_data = get_patient_data(input_df, patient_id)
 
     if progress_callback:
         progress_callback(10)
@@ -271,7 +380,7 @@ def convert(
     # 2. Determine PreOp or PostOp
     # --------------------------------------------------
 
-    assessment_status = get_assessment_status(input_row)
+    assessment_status = get_assessment_status(pt_data)
 
     if assessment_status == "preop":
         target_column = PREOP_TARGET_COLUMN
@@ -348,10 +457,30 @@ def convert(
 
     worksheet = workbook.active
 
-    validate_target_cells(
-        worksheet,
-        usable_mapping_rows,
-    )
+    validate_target_cells(worksheet, usable_mapping_rows)
+
+    # Check patient ID before merging
+    if merge_path:
+        patient_id_target = get_patient_id_target(usable_mapping_rows)
+
+        if patient_id_target is None:
+            raise ValueError("The mapping file does not contain a PatientID target for this assessment type.\n\n"
+                             "THe patient ID cannot be verified before merging.")
+
+        existing_patient_id = worksheet[patient_id_target].value
+
+        if pd.isna(existing_patient_id) or (isinstance(existing_patient_id, str) and existing_patient_id.strip() == ""):
+            raise ValueError("The existing Physical Exam file does not contain a Patient ID.\n\n"
+                             "THe file cannot be safely merged.")
+
+        selected_patient_id = str(patient_id).strip()
+        existing_patient_id = str(existing_patient_id).strip()
+
+        if selected_patient_id != existing_patient_id:
+            raise ValueError("The patient IDs do not match.\n\n"
+                             f"Export patient ID: {selected_patient_id}\n"
+                             f"Existing Physical Exam Patient ID: {existing_patient_id}\n\n"
+                             "Please make sure both files belong to the same patient.")
 
     total_fields = len(usable_mapping_rows)
     written = 0
@@ -371,7 +500,7 @@ def convert(
                 "The conversion was cancelled."
             )
 
-        value = input_row[source_column]
+        value = pt_data[source_column]
         target = worksheet[target_cell]
 
         # Skip blank REDCap values.

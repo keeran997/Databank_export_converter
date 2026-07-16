@@ -1,7 +1,7 @@
 import sys
 import os
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QFileDialog, QLabel,
-    QLineEdit, QMessageBox, QProgressBar, QHBoxLayout, QApplication, QProgressDialog, QCheckBox)
+    QLineEdit, QMessageBox, QProgressBar, QHBoxLayout, QApplication, QProgressDialog, QCheckBox, QComboBox)
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QPixmap
 from worker import ConvertThread
@@ -9,6 +9,7 @@ from help import HelpDialog
 import subprocess
 from updater import UpdateCheckThread, UpdateDownloadThread
 from version import APP_VERSION
+from converter import get_patient_ids
 
 def resource_path(relative_path):
     if hasattr(sys, "_MEIPASS"):
@@ -71,6 +72,21 @@ class ConverterUI(QWidget):
         browse_csv.clicked.connect(self.pick_csv)
 
         layout.addWidget(browse_csv)
+
+        #Patient selection
+        self.patient_label = QLabel("Patient ID")
+        self.patient_combo = QComboBox()
+        self.patient_combo.setMinimumWidth(180)
+
+        self.patient_label.hide()
+        self.patient_combo.hide()
+
+        pt_layout = QHBoxLayout()
+        pt_layout.addWidget(self.patient_label)
+        pt_layout.addWidget(self.patient_combo)
+        pt_layout.addStretch()
+
+        layout.addLayout(pt_layout)
 
         self.merge_checkbox = QCheckBox("Merge into an existing Physical Exam file")
         self.merge_checkbox.toggled.connect(self.toggle_merge_controls)
@@ -241,6 +257,29 @@ class ConverterUI(QWidget):
         )
 
     #File pickers
+    def load_pt_selection(self, input_file):
+        self.patient_combo.clear()
+        self.patient_label.hide()
+        self.patient_combo.hude()
+
+        try:
+            patient_ids = get_patient_ids(input_file)
+
+        except Exception as error:
+            QMessageBox.critical(self, "Invalid Export", str(error))
+            self.input_path.clear()
+            self.output_path.clear()
+            return False
+
+        for patient_id in patient_ids:
+            self.patient_combo.addItem(patient_id, patient_id)
+
+            if len(patient_ids) > 1:
+                self.patient_label.show()
+                self.patient_combo.show()
+
+            return True
+
     def pick_csv(self):
         input_file, _ = QFileDialog.getOpenFileName(
             self,
@@ -250,6 +289,9 @@ class ConverterUI(QWidget):
         )
 
         if input_file:
+            if not self.load_pt_selection(input_file):
+                return
+
             self.input_path.setText(input_file)
             self.output_path.clear()
 
@@ -298,6 +340,10 @@ class ConverterUI(QWidget):
             input_file = url.toLocalFile()
 
             if input_file.lower().endswith(".csv"):
+                if not self.load_pt_selection(input_file):
+                    event.ignore()
+                    return
+
                 self.input_path.setText(input_file)
                 self.output_path.clear()
                 event.acceptProposedAction()
@@ -316,6 +362,7 @@ class ConverterUI(QWidget):
     def start_conversion(self):
         input_path = self.input_path.text().strip()
         output_path = self.output_path.text().strip()
+        patient_id = self.patient_combo.currentData()
 
         merge_path = None
 
@@ -359,6 +406,10 @@ class ConverterUI(QWidget):
                 "Invalid Input",
                 "The selected input must be a CSV file.",
             )
+            return
+
+        if patient_id is None:
+            QMessageBox.warning(self, "Missing patient", "Please select a Patient ID.")
             return
 
         if not output_path:
@@ -420,6 +471,7 @@ class ConverterUI(QWidget):
             mapping_path=mapping_path,
             template_path=template_path,
             output_path=output_path,
+            patient_id=patient_id,
             merge_path=merge_path
         )
 

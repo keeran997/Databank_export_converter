@@ -270,7 +270,7 @@ class ConverterUI(QWidget):
     def load_pt_selection(self, input_file):
         self.patient_combo.clear()
         self.patient_label.hide()
-        self.patient_combo.hude()
+        self.patient_combo.hide()
 
         try:
             patient_ids = get_patient_ids(input_file)

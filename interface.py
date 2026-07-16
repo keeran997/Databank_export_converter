@@ -201,9 +201,9 @@ class ConverterUI(QWidget):
         download_url = update_info["download_url"]
 
         up_msg = (
-            f"A new version {latest_ver} of the converter is available.\n\n"
+            f"A new version {latest_ver} of the converter is available.\n"
+            f"What's new:\n{release_notes}\n\n"
             f"Download and install now?"
-            f"\nWhat's new:\n{release_notes}"
         )
 
         ans = QMessageBox.question(

@@ -34,7 +34,7 @@ class PatientSelectDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
-        msg = QLabel("Muiltiple Patient IDs were detected in this export.\n\n"
+        msg = QLabel("Multiple Patient IDs were detected in this export.\n\n"
                      "Select the patient ID you want to convert:")
 
         msg.setWordWrap(True)
@@ -65,7 +65,6 @@ class ConverterUI(QWidget):
         self.setAcceptDrops(True)
 
         self.is_running = False
-        self.selected_patient_id = None
 
         layout = QVBoxLayout()
 
@@ -105,6 +104,20 @@ class ConverterUI(QWidget):
         browse_csv.clicked.connect(self.pick_csv)
 
         layout.addWidget(browse_csv)
+
+        #Selected patient
+        self.patient_label = QLabel("Selected Patient ID")
+        self.patient_combo = QComboBox()
+        self.patient_combo.setMinimumWidth(180)
+        self.patient_label.hide()
+        self.patient_combo.hide()
+
+        pt_layout = QHBoxLayout()
+        pt_layout.addWidget(self.patient_label)
+        pt_layout.addWidget(self.patient_combo)
+        pt_layout.addStretch()
+
+        layout.addLayout(pt_layout)
 
         self.merge_checkbox = QCheckBox("Merge into an existing Physical Exam file")
         self.merge_checkbox.toggled.connect(self.toggle_merge_controls)
@@ -286,7 +299,9 @@ class ConverterUI(QWidget):
 
     #File pickers
     def load_pt_selection(self, input_file):
-        self.selected_patient_id = None
+        self.patient_label.hide()
+        self.patient_combo.clear()
+        self.patient_combo.hide()
 
         try:
             patient_ids = get_patient_ids(input_file)
@@ -297,6 +312,11 @@ class ConverterUI(QWidget):
             self.output_path.clear()
             return False
 
+        #Add all IDs to dropdown
+        for patient_id in patient_ids:
+            self.patient_combo.addItem(str(patient_id), str(patient_id))
+
+        #Automatically select patient if only 1
         if len(patient_ids) == 1:
             self.selected_patient_id = patient_ids[0]
             return True
@@ -304,11 +324,27 @@ class ConverterUI(QWidget):
         dialog = PatientSelectDialog(patient_ids, self)
 
         if dialog.exec() != QDialog.Accepted:
+            self.patient_combo.clear()
             return False
 
-        self.selected_patient_id = (dialog.selected_patient_id())
+        selected_patient_id = (
+            dialog.selected_patient_id()
+        )
 
-        return self.selected_patient_id is not None
+        selected_index = self.patient_combo.findData(
+            selected_patient_id
+        )
+
+        if selected_index >= 0:
+            self.patient_combo.setCurrentIndex(
+                selected_index
+            )
+
+        # Keep the dropdown visible so the user can switch patients.
+        self.patient_label.show()
+        self.patient_combo.show()
+
+        return True
 
     def pick_csv(self):
         input_file, _ = QFileDialog.getOpenFileName(
@@ -392,7 +428,7 @@ class ConverterUI(QWidget):
     def start_conversion(self):
         input_path = self.input_path.text().strip()
         output_path = self.output_path.text().strip()
-        patient_id = self.selected_patient_id
+        patient_id = self.patient_combo.currentData()
 
         merge_path = None
 

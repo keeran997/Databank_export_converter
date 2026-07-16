@@ -145,6 +145,16 @@ class ConverterUI(QWidget):
 
         layout.addWidget(self.progress)
 
+        #App version
+        version_lbl = QLabel(f"Version {APP_VERSION}")
+        version_lbl.setAlignment(Qt.AlignRight | Qt.AlignBottom)
+        version_lbl.setStyleSheet("""
+                color: grey;
+                font-size: 8pt;
+        """)
+
+        layout.addWidget(version_lbl)
+
         self.setLayout(layout)
 
         QTimer.singleShot(1000, self.check_updates)

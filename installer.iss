@@ -1,6 +1,6 @@
 #define MyAppName "Databank Export Converter"
-#define MyAppVersion "1.0.2"
-#define MyAppPublisher "Keeran"
+#define MyAppVersion "1.0.3"
+#define MyAppPublisher "Keeran B"
 #define MyAppExeName "DatabankExportConverter.exe"
 
 [Setup]

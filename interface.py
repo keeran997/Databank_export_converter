@@ -1,7 +1,8 @@
 import sys
 import os
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QFileDialog, QLabel,
-    QLineEdit, QMessageBox, QProgressBar, QHBoxLayout, QApplication, QProgressDialog, QCheckBox, QComboBox)
+    QLineEdit, QMessageBox, QProgressBar, QHBoxLayout, QApplication, QProgressDialog,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox)
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QPixmap
 from worker import ConvertThread
@@ -23,6 +24,37 @@ def resource_path(relative_path):
 mapping_path = resource_path("config/mapping.xlsx")
 template_path = resource_path("config/Gait Lab Physical Exam Template 2026.xlsx")
 
+class PatientSelectDialog(QDialog):
+    def __init__(self, patient_ids, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("Multiple Patient IDs")
+        self.setModal(True)
+        self.setMinimumWidth(320)
+
+        layout = QVBoxLayout(self)
+
+        msg = QLabel("Muiltiple Patient IDs were detected in this export.\n\n"
+                     "Select the patient ID you want to convert:")
+
+        msg.setWordWrap(True)
+        layout.addWidget(msg)
+        self.patient_combo = QComboBox()
+
+        for patient_id in patient_ids:
+            self.patient_combo.addItem(str(patient_id), str(patient_id))
+
+        layout.addWidget(self.patient_combo)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+
+        layout.addWidget(btns)
+
+    def selected_patient_id(self):
+        return self.patient_combo.currentData()
+
 # GUI
 class ConverterUI(QWidget):
     def __init__(self):
@@ -33,6 +65,7 @@ class ConverterUI(QWidget):
         self.setAcceptDrops(True)
 
         self.is_running = False
+        self.selected_patient_id = None
 
         layout = QVBoxLayout()
 
@@ -72,21 +105,6 @@ class ConverterUI(QWidget):
         browse_csv.clicked.connect(self.pick_csv)
 
         layout.addWidget(browse_csv)
-
-        #Patient selection
-        self.patient_label = QLabel("Patient ID")
-        self.patient_combo = QComboBox()
-        self.patient_combo.setMinimumWidth(180)
-
-        self.patient_label.hide()
-        self.patient_combo.hide()
-
-        pt_layout = QHBoxLayout()
-        pt_layout.addWidget(self.patient_label)
-        pt_layout.addWidget(self.patient_combo)
-        pt_layout.addStretch()
-
-        layout.addLayout(pt_layout)
 
         self.merge_checkbox = QCheckBox("Merge into an existing Physical Exam file")
         self.merge_checkbox.toggled.connect(self.toggle_merge_controls)
@@ -268,27 +286,29 @@ class ConverterUI(QWidget):
 
     #File pickers
     def load_pt_selection(self, input_file):
-        self.patient_combo.clear()
-        self.patient_label.hide()
-        self.patient_combo.hide()
+        self.selected_patient_id = None
 
         try:
             patient_ids = get_patient_ids(input_file)
-
         except Exception as error:
             QMessageBox.critical(self, "Invalid Export", str(error))
+
             self.input_path.clear()
             self.output_path.clear()
             return False
 
-        for patient_id in patient_ids:
-            self.patient_combo.addItem(patient_id, patient_id)
-
-            if len(patient_ids) > 1:
-                self.patient_label.show()
-                self.patient_combo.show()
-
+        if len(patient_ids) == 1:
+            self.selected_patient_id = patient_ids[0]
             return True
+
+        dialog = PatientSelectDialog(patient_ids, self)
+
+        if dialog.exec() != QDialog.Accepted:
+            return False
+
+        self.selected_patient_id = (dialog.selected_patient_id())
+
+        return self.selected_patient_id is not None
 
     def pick_csv(self):
         input_file, _ = QFileDialog.getOpenFileName(
@@ -372,7 +392,7 @@ class ConverterUI(QWidget):
     def start_conversion(self):
         input_path = self.input_path.text().strip()
         output_path = self.output_path.text().strip()
-        patient_id = self.patient_combo.currentData()
+        patient_id = self.selected_patient_id
 
         merge_path = None
 
